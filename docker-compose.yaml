@@ -86,7 +86,7 @@ services:
       - "traefik.http.routers.traefik-rtr.tls.domains[0].main=$DOMAINNAME"
       - "traefik.http.routers.traefik-rtr.tls.domains[0].sans=*.$DOMAINNAME"
       # MIDDLEWARE
-      - "traefik.http.routers.traefik-rtr.middlewares=middleware-default-chain@file,traefik-headers"
+      - "traefik.http.routers.traefik-rtr.middlewares=default-chain@file,traefik-headers"
       # traefik-headers middleware
       # see: https://docs.traefik.io/v2.2/middlewares/headers/#general
       - "traefik.http.middlewares.traefik-headers.headers.accessControlAllowMethods=GET, OPTIONS, PUT"
@@ -128,7 +128,7 @@ services:
       - "traefik.http.routers.helloworld-rtr.tls=true"
       - "traefik.http.routers.helloworld-rtr.tls.certresolver=dns-cloudflare"
       # MIDDLEWARE
-      - "traefik.http.routers.helloworld-rtr.middlewares=middleware-default-chain@file"
+      - "traefik.http.routers.helloworld-rtr.middlewares=default-chain@file"
       # SERVICE
       - "traefik.http.routers.helloworld-rtr.service=helloworld-svc"
       - "traefik.http.services.helloworld-svc.loadbalancer.server.port=80"
