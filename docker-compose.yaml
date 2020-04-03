@@ -1,0 +1,147 @@
+version: "3.7"
+
+# NETWORK
+networks:
+  proxy:
+    external:
+      name: proxy
+  default:
+    driver: bridge
+
+# SERVICE
+services:
+  traefik:
+    container_name: traefik
+    image: traefik:chevrotin  # see: https://hub.docker.com/_/traefik
+    restart: always
+    networks:
+      proxy:
+        ipv4_address: 192.168.90.254
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+      - target: 8010
+        published: 8010
+        protocol: tcp
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - $BASEDIR/traefik/dynamic:/dynamic
+      - $BASEDIR/traefik/acme/acme.json:/acme.json
+      - $BASEDIR/traefik/traefik.log:/var/log/docker/traefik.log
+    command:  # static config
+      - --global.checkNewVersion=true
+      - --global.sendAnonymousUsage=false
+      - --entryPoints.http.address=:80
+      - --entryPoints.https.address=:443
+      - --entryPoints.traefik.address=:8010
+      - --api=true
+      - --api.dashboard=true
+      - --log=true
+      - --log.level=INFO  # suggested alternatives: DEBUG, WARN, ERROR
+      - --accessLog=true
+      - --accessLog.filePath=/var/log/docker/traefik.log
+      - --accessLog.bufferingSize=500  # keep a buffer of 500 lines
+      - --accessLog.filters.statusCodes=400-499  # do not log 4xx
+      - --providers.docker=true
+      - --providers.docker.defaultRule=Host(`{{ index .Labels "com.docker.compose.service" }}.$DOMAINNAME`)
+      - --providers.docker.exposedByDefault=false  # do not expose docker services by default
+      - --providers.docker.network=proxy  # use the proxy network
+      - --providers.docker.swarmMode=false
+      - --providers.file.directory=/dynamic  # dynamic configuration directory
+      - --providers.file.watch=true
+      # see: https://docs.traefik.io/v2.2/https/acme/#the-different-acme-challenges
+      # tls-resolver can be used as an alternative for dns-cloudflare
+      # make sure to:
+      #   => define $EMAIL in .env
+      #   => change every service's tls.certresolver to tls-resolver
+      #
+      # - --certificatesResolvers.tls-resolver.acme.tlsChallenge=true
+      # - --certificatesResolvers.tls-resolver.acme.email=$EMAIL
+      # - --certificatesResolvers.tls-resolver.acme.storage=/acme.json
+      - --certificatesResolvers.dns-cloudflare.acme.email=$CF_API_EMAIL
+      - --certificatesResolvers.dns-cloudflare.acme.storage=/acmeCFjson
+      - --certificatesResolvers.dns-cloudflare.acme.dnsChallenge.provider=cloudflare
+    environment:
+      - CF_API_EMAIL=$CF_API_EMAIL
+      - CF_API_KEY=$CF_API_KEY
+    labels:  # this is also known as Traefik-ception
+      - "traefik.enable=true"
+      # catchall HTTP-to-HTTPS redirect
+      - "traefik.http.routers.http-catchall.entryPoints=http"
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectScheme.scheme=https"
+      # ROUTER
+      - "traefik.http.routers.traefik-rtr.entryPoints=https"
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.tls=true"
+      - "traefik.http.routers.traefik-rtr.tls.certResolver=dns-cloudflare"
+      - "traefik.http.routers.traefik-rtr.tls.domains[0].main=$DOMAINNAME"
+      - "traefik.http.routers.traefik-rtr.tls.domains[0].sans=*.$DOMAINNAME"
+      # MIDDLEWARE
+      - "traefik.http.routers.traefik-rtr.middlewares=middleware-default-chain@file,traefik-headers"
+      # traefik-headers middleware
+      # see: https://docs.traefik.io/v2.2/middlewares/headers/#general
+      - "traefik.http.middlewares.traefik-headers.headers.accessControlAllowMethods=GET, OPTIONS, PUT"
+      - "traefik.http.middlewares.traefik-headers.headers.accessControlAllowOriginList=https://$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.accessControlMaxAge=100"
+      - "traefik.http.middlewares.traefik-headers.headers.addVaryHeader=true"
+      - "traefik.http.middlewares.traefik-headers.headers.allowedHosts=traefik.$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.hostsProxyHeaders=X-Forwarded-Host"
+      - "traefik.http.middlewares.traefik-headers.headers.sslRedirect=true"
+      - "traefik.http.middlewares.traefik-headers.headers.sslHost=traefik.$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.sslForceHost=true"
+      - "traefik.http.middlewares.traefik-headers.headers.sslProxyHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.traefik-headers.headers.stsSeconds=63072000"
+      - "traefik.http.middlewares.traefik-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.traefik-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.traefik-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.traefik-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.traefik-headers.headers.customFrameOptionsValue='allow-from https:$DOMAINNAME'"
+      - "traefik.http.middlewares.traefik-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.traefik-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.traefik-headers.headers.referrerPolicy=same-origin"
+      - "traefik.http.middlewares.traefik-headers.headers.featurePolicy=camera 'none'; geolocation 'none'; microphone 'none'; payment 'none'; usb 'none'; vr 'none';"
+      - "traefik.http.middlewares.traefik-headers.headers.customResponseHeaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex,"
+      # SERVICE
+      - "traefik.http.services.traefik-rtr.loadBalancer.server.port=8010"
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
+
+  hello-world:
+    container_name: hello-world
+    image: strm/helloworld-http
+    restart: always
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # ROUTER
+      - "traefik.http.routers.helloworld-rtr.entrypoints=https"
+      - "traefik.http.routers.helloworld-rtr.rule=Host(`hello.$DOMAINNAME`)"
+      - "traefik.http.routers.helloworld-rtr.tls=true"
+      - "traefik.http.routers.helloworld-rtr.tls.certresolver=dns-cloudflare"
+      # MIDDLEWARE
+      - "traefik.http.routers.helloworld-rtr.middlewares=middleware-default-chain@file"
+      # SERVICE
+      - "traefik.http.routers.helloworld-rtr.service=helloworld-svc"
+      - "traefik.http.services.helloworld-svc.loadbalancer.server.port=80"
+
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    restart: always
+    environment:
+      - POSTGRES_USER=$PG_USER
+      - POSTGRES_PASSWORD=$PG_PASSWORD
+    networks:
+      - default
+    volumes:
+      - $BASEDIR/docker/postgres/data:/var/lib/postgresql/data
+      - $BASEDIR/docker/postgres/init:/docker-entrypoint-initdb.d  # Add .sql

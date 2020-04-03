@@ -1,0 +1,16 @@
+[http.middlewares]
+  [http.middlewares.secure-headers.headers]
+    accessControlAllowMethods= ["GET", "OPTIONS", "PUT"]
+    accessControlMaxAge = 100
+    hostsProxyHeaders = ["X-Forwarded-Host"]
+    sslRedirect = true
+    stsSeconds = 63072000
+    stsIncludeSubdomains = true
+    stsPreload = true
+    forceSTSHeader = true
+    contentTypeNosniff = true
+    browserXssFilter = true
+    referrerPolicy = "same-origin"
+    [http.middlewares.secure-headers.headers.customResponseHeaders]
+      X-Robots-Tag = "none,noarchive,nosnippet,notranslate,noimageindex,"
+      server = ""
