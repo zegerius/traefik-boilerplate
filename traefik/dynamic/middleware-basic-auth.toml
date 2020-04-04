@@ -1,0 +1,3 @@
+[http.middlewares]
+  [http.middlewares.basic-auth.basicAuth]
+    users = ["user:$apr1$I2TNgmSZ$pUHD/UsqiRAq4vFBbCI0l0",]
