@@ -1,4 +1,4 @@
-# Traefik + docker-compose boilerplate
+# Traefik v2.2 + docker-compose boilerplate
 
 This repository is part of my [Traefik guide](https://blog.zegeri.us/traefik-v2-docker-compose-boilerplate).
 
